@@ -1,17 +1,17 @@
 #ifndef MQTT_H
 #define MQTT_H
 
-#include "ThermostatState.h"
+#include "SpaState.h"
 
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-class ThermostatMQTT : public ThermostatState::Listener
+class SpaMQTT : public SpaState::Listener
 {
 public:
-	ThermostatMQTT(ThermostatState* state);
+	SpaMQTT(SpaState* state);
 
-	virtual void handleThermostatStateChange(const ThermostatState::ChangeEvent& c) override;
+	virtual void handleSpaStateChange(const SpaState::ChangeEvent& c) override;
 	void setName(String n) { name = n + "/"; } 
 	void loop();
 	void reconnect();
@@ -19,7 +19,7 @@ public:
 	static void static_callback(char* topic, byte* payload, unsigned int length);
 	void callback(char* topic, byte* payload, unsigned int length);
 
-	static ThermostatMQTT* self;
+	static SpaMQTT* self;
 
 private:
 	void subscribe();
@@ -27,10 +27,10 @@ private:
 	void sendHAAction();
 private:
 	String name = String("default/");
-	ThermostatState* thermostatState;
+	SpaState* spaState;
 	WiFiClient wifiClient;
 	PubSubClient mqttClient;
-	std::set<ThermostatState::ChangeEvent> pendingChangeEvents;
+	std::set<SpaState::ChangeEvent> pendingChangeEvents;
 
 };
 

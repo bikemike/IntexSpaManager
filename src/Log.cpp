@@ -9,6 +9,9 @@ void Log::addLine(const String& line)
 		logSize -= logLines.front().second.length();
 		logLines.pop_front();
 	}
+#ifdef SERIAL_DEBUG
+Serial.println(line);
+#endif
 }
 
 void Log::addBytes(const String& header, const uint8_t* bytes, uint8_t len)

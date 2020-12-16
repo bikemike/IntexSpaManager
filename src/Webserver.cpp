@@ -3,16 +3,14 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPUpdateServer.h>
 
-#ifdef BHT002GBLW
-#include "BHT002.h"
-#else
-#include "C17GH3.h"
-#endif
+
+#include "SpaState.h"
+
 #include "Log.h"
 
 extern Log logger;
 
-void Webserver::init(ThermostatState* state_, String devName)
+void Webserver::init(SpaState* state_, String devName)
 {
 	state = state_;
 	deviceName = devName;
@@ -26,6 +24,23 @@ void Webserver::init(ThermostatState* state_, String devName)
 	server->onNotFound(std::bind(&Webserver::handleRoot, this));
 	server->begin();
 
+/*
+  server->on("/power",  []() {handleButton(BTN_POWER);});
+  server->on("/up",     []() {handleButton(BTN_UP);});
+  server->on("/down",   []() {handleButton(BTN_DOWN);});
+  server->on("/filter", []() {handleButton(BTN_FILTER);});
+  server->on("/heater", []() {handleButton(BTN_HEATER);});
+  server->on("/bubble",[]() {handleButton(BTN_BUBBLE);});
+  server->on("/fc",     []() {handleButton(BTN_FC);}); // celsius fahrenheit
+  server->on("/buzz0",     []() {handleBuzz(0);});
+  server->on("/buzz1",     []() {handleBuzz(1);});
+  server->onNotFound(handleNotFound);
+
+  server->on("/power1",  []() {controller_power_state_set(true);returnToStatus();});
+  server->on("/power0",  []() {controller_power_state_set(false);returnToStatus();});
+  server->on("/set",  []() {handleSet();});
+*/
+
 	httpUpdater->setup(server);
 	state->addListener(this);
 }
@@ -33,7 +48,7 @@ void Webserver::init(ThermostatState* state_, String devName)
 void Webserver::handleRoot()
 {
 
-	String msg("<html><head><title>Wifi Thermostat</title></head><body>");
+	String msg("<html><head><title>Wifi Spa</title></head><body>");
 	msg += deviceName;
 	msg += " State:<br>";
 	msg += "<pre>";
@@ -57,51 +72,26 @@ void Webserver::handleConsole()
     {
 		String cmd = server->arg("cmd");
 		cmd.trim();
-		cmd.replace(" ","");
 		logger.addLine("Got a post cmd: " + cmd);
-		
-		//if (cmd.length() == 35)
+		if (cmd == "units")
 		{
-			if (cmd.startsWith("RX:"))
-			{
-				cmd = cmd.substring(3);
-				while (cmd.length() > 0)
-				{
-					String v = cmd.substring(0,2);
-					cmd = cmd.substring(2);
-					state->processRx(strtol(v.c_str(), nullptr, 16));
-				}
-			}
-			else if (cmd.startsWith("TX:"))
-			{
-				cmd = cmd.substring(3);
-#ifdef BHT002GBLW
-				TUYAMessageBuffer buffer;
-#else
-				C17GH3MessageBuffer buffer;
-#endif
-				while (cmd.length() > 0)
-				{
-					String v = cmd.substring(0,2);
-					cmd = cmd.substring(2);
-					bool hasMsg = buffer.addbyte(strtol(v.c_str(), nullptr, 16));
-					if (hasMsg)
-					{
-#ifdef BHT002GBLW
-						TUYAMessage msg(buffer.getBytes(), buffer.getLength());
-#else
-						C17GH3MessageBase msg(buffer.getBytes());
-#endif
-
-						msg.pack();
-						state->sendMessage(msg);
-					}
-				}
-
-			}
+			state->setTempInC(!state->getIsTempInC());
 		}
-    }
-	String msg("<html><head><title>Wifi Thermostat</title>");
+		else if(cmd == "power")
+		{
+			state->setPowerEnabled(!state->getPowerEnabled());
+		}
+		else if (cmd == "bubbles")
+		{
+			state->setBubblesEnabled(!state->getBubblesEnabled());
+		}
+		else if (cmd.startsWith("settemp="))
+		{
+			int temperature = cmd.substring(8).toInt();
+			state->setTargetTemperature(temperature);
+		}
+	}
+	String msg("<html><head><title>Wifi Spa</title>");
 	msg += "<script>";
 	msg += "function sb(){ var c = document.getElementById('console');c.scrollTop = c.scrollHeight;}";
 	msg += "</script></head>";
@@ -140,31 +130,32 @@ void Webserver::process()
 	server->handleClient();
 }
 
-void Webserver::handleThermostatStateChange(const ThermostatState::ChangeEvent& c)
+void Webserver::handleSpaStateChange(const SpaState::ChangeEvent& c)
 {
+	/*
 	switch(c.getType())
 	{
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_POWER:
+	case SpaState::ChangeEvent::CHANGE_TYPE_POWER:
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_MODE:
+	case SpaState::ChangeEvent::CHANGE_TYPE_MODE:
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_ECONOMY:
+	case SpaState::ChangeEvent::CHANGE_TYPE_ECONOMY:
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_SETPOINT_TEMP:
+	case SpaState::ChangeEvent::CHANGE_TYPE_SETPOINT_TEMP:
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_INTERNAL_TEMP:
+	case SpaState::ChangeEvent::CHANGE_TYPE_INTERNAL_TEMP:
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_EXTERNAL_TEMP:
+	case SpaState::ChangeEvent::CHANGE_TYPE_EXTERNAL_TEMP:
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_IS_HEATING:
+	case SpaState::ChangeEvent::CHANGE_TYPE_IS_HEATING:
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_SCHEDULE:
+	case SpaState::ChangeEvent::CHANGE_TYPE_SCHEDULE:
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_LOCK:
+	case SpaState::ChangeEvent::CHANGE_TYPE_LOCK:
 		break;
 	default:
 		break;
-	}
+	}*/
 }
 
 

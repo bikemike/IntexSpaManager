@@ -3,12 +3,13 @@
 #include <ESP8266WiFi.h> 
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
-#include <FS.h>
+#include <LittleFS.h> // LittleFS is declared
 #include <DNSServer.h>
 #include <WiFiManager.h>
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
 #include <ESP8266mDNS.h>
+#include <TZ.h>
 
 // time includes
 #include <time.h>
@@ -17,95 +18,33 @@
 
 #include <set>
 
-#ifdef C17GH3
-#include "C17GH3.h"
-#endif
-#ifdef BHT002GBLW
-#include "BHT002.h"
-#endif
+
+#include "SpaState.h"
+
 #include "Webserver.h"
 #include "Log.h"
-#include "ThermostatMQTT.h"
+#include "SpaMQTT.h"
 
 WiFiManager wifiManager;
-#ifdef C17GH3
-C17GH3State state;
-#else
-TUYAThermostatState state;
-#endif
-ThermostatMQTT thermostatMQTT(&state);
+
+SpaState state;
+
+SpaMQTT spaMQTT(&state);
 Webserver webserver;
 Log logger;
 bool relayOn = false;
 
-//#define PIN_RELAY_MONITOR    5
-
-#ifdef C17GH3
-//#define PIN_RELAY2           4
-//#define PIN_PWM             13	
-//#define PIN_PWM_MONITOR     12
-#endif
+const int PIN_CLK     = D7; 
+const int PIN_LAT     = D6; 
+const int PIN_DAT_IN  = D5; 
+const int PIN_DAT_OUT = D0; //emulate button press      
 
 
-class AuxHeatHandler : public ThermostatState::Listener
-{
-public:
-	AuxHeatHandler(ThermostatState* state) : state(state)
-	{																																																																																																																																																																																																																																																																																																																																																																																																																																										
-		state->addListener(this);
-
-	}
-
-	virtual void handleThermostatStateChange(const ThermostatState::ChangeEvent& c) override
-	{
-		switch(c.getType())
-		{
-		case ThermostatState::ChangeEvent::CHANGE_TYPE_AUX_HEAT_ENABLED:
-			{
-#ifdef PIN_RELAY2
-				if (state && state->getAuxHeatEnabled() && state->getIsHeating())
-				{
-					digitalWrite(PIN_RELAY2, HIGH);
-				}
-				else
-				{
-					digitalWrite(PIN_RELAY2, LOW);					
-				}
-				
-#endif
-			}
-			break;
-		default:
-			break;
-		}
-	}
-private:
-	ThermostatState* state = nullptr;
-
-};
-
-AuxHeatHandler auxHeatHandler(&state);
-
-#define TIMEZONE 	"PST8PDT,M3.2.0,M11.1.0" // FROM https://github.com/nayarsystems/posix_tz_db/blob/master/zones.json
+#define TIMEZONE 	TZ_America_Vancouver
 
 static void setupOTA();
 static void initTime();
 
-
-#ifdef PIN_RELAY_MONITOR
-static void ICACHE_RAM_ATTR handleRelayMonitorInterrupt();
-#endif
-
-#ifdef PIN_PWM_MONITOR
-
-static uint32_t pwmLowCycles = 0;
-static uint32_t pwmHighCycles = 0;
-static int      pwmPinValue = LOW;
-static uint32_t pwmLastInterruptCycles = 0;
-static const uint32_t pwmMaxPeriod = 11000000;
-static bool pwmInterruptTimedOut = false;
-static void ICACHE_RAM_ATTR handlePWMMonitorInterrupt();
-#endif
 
 struct Config
 {
@@ -118,7 +57,7 @@ Config config;
 static void saveConfig()
 {
 	const char* filename = "/config.json";
-	File file = SPIFFS.open(filename, "w");
+	File file = LittleFS.open(filename, "w");
 	bool saved = false;
 	if (file)
 	{
@@ -135,13 +74,13 @@ static void saveConfig()
 
 static void loadConfig()
 {
-	String devName = String("Thermostat-") + String(ESP.getChipId(),HEX);
+	String devName = String("IntexSpa-") + String(ESP.getChipId(),HEX);
 	const char* filename = "/config.json";
 	bool loaded = false;
 
-	if (SPIFFS.exists(filename))
+	if (LittleFS.exists(filename))
 	{
-		File file = SPIFFS.open(filename, "r");
+		File file = LittleFS.open(filename, "r");
 
 		StaticJsonDocument<512> doc;
 
@@ -173,12 +112,12 @@ static void loadConfig()
 
 void setup()
 {
-	SPIFFS.begin();
+	LittleFS.begin();
 	loadConfig();
 	//strlcpy(config.deviceName, "MoesThermostat",16);
 	//saveConfig();
 
-	thermostatMQTT.setName(config.deviceName);
+	spaMQTT.setName(config.deviceName);
 	ArduinoOTA.setHostname(config.deviceName);
 	WiFi.hostname(config.deviceName);
 	WiFi.enableAP(false);
@@ -186,9 +125,9 @@ void setup()
 	WiFi.begin();
 	wifiManager.setConfigPortalTimeout(120);
 	wifiManager.setDebugOutput(false);
-
-	Serial.begin(9600);
-
+#ifdef SERIAL_DEBUG
+	Serial.begin(115200);
+#endif
 	state.setWifiConfigCallback([]() {
 		logger.addLine("Configuration portal opened");
 		webserver.stop();
@@ -198,7 +137,6 @@ void setup()
 		logger.addLine("Configuration portal closed");
     });
 
-	//wifiManager.autoConnect(devName.c_str());
 
 	webserver.init(&state, config.deviceName);
 	setupOTA();
@@ -207,26 +145,10 @@ void setup()
 	MDNS.addService("http", "tcp", 80);
 
 	initTime();
-#ifdef PIN_RELAY_MONITOR
-	pinMode(PIN_RELAY_MONITOR, INPUT);
-	attachInterrupt(digitalPinToInterrupt(PIN_RELAY_MONITOR), handleRelayMonitorInterrupt, CHANGE);
-	relayOn = digitalRead(PIN_RELAY_MONITOR);
-	state.setIsHeating(relayOn);
-#endif
-#ifdef PIN_RELAY2
-	pinMode(PIN_RELAY2, OUTPUT);
-	digitalWrite(PIN_RELAY2, LOW); 	
-#endif
 
-#ifdef PIN_PWM
-	pinMode(PIN_PWM, OUTPUT);
-	analogWrite(PIN_PWM, 1023);
-#endif
-
-#ifdef PIN_PWM_MONITOR
-	pinMode(PIN_PWM_MONITOR, INPUT);
-	attachInterrupt(digitalPinToInterrupt(PIN_PWM_MONITOR), handlePWMMonitorInterrupt, CHANGE);
-#endif
+	pinMode(LED_BUILTIN, OUTPUT);
+	digitalWrite(PIN_DAT_OUT, HIGH);
+	state.init(PIN_CLK, PIN_LAT, PIN_DAT_IN, PIN_DAT_OUT);
 }
 
 timeval cbtime;			// when time set callback was called
@@ -235,68 +157,117 @@ static void timeSet()
 {
 	gettimeofday(&cbtime, NULL);
 	cbtime_set++;
+
+	time_t tnow = time(nullptr);
+	struct tm* new_time = nullptr;
+	new_time = localtime(&tnow);
+	char stbuff[32] = {0};
+	strftime(stbuff, 32, "%F %T", new_time);
+
+	logger.addLine(stbuff);
+	#ifdef SERIAL_DEBUG
+	Serial.println("Time set from NTP");
+	Serial.println(stbuff);
+	#endif
 }
 
+void checkWiFiConnection()
+{
+  static uint32_t nextRetry = 30000;
+  static wl_status_t lastWiFiStatus = WiFi.status();
+  wl_status_t newWiFiStatus = WiFi.status();
+  static uint32_t timeLastChange = 0;
+  uint32_t timeNow = millis();
+  // if wifi status hasn't changed in 60 seconds and it's not WL_CONNECTED
+  // try to reconnect
+  if (lastWiFiStatus != newWiFiStatus)
+  {
+	logger.addLine("IP Address: " + WiFi.localIP().toString());
+    lastWiFiStatus = newWiFiStatus;
+    timeLastChange = timeNow;
+  }
+  else if (timeNow - timeLastChange > nextRetry && WL_CONNECTED != newWiFiStatus)
+  {
+    String wifiInfo;
+    switch (newWiFiStatus)
+    {
+    case WL_NO_SHIELD:
+      wifiInfo = "WL_NO_SHIELD";
+      break;
+    case WL_IDLE_STATUS:
+      wifiInfo = "WL_IDLE_STATUS";
+      break;
+    case WL_NO_SSID_AVAIL:
+      wifiInfo = "WL_NO_SSID_AVAIL";
+      break;
+    case WL_DISCONNECTED:
+      wifiInfo = "WL_DISCONNECTED";
+      break;
+    case WL_CONNECTION_LOST:
+      wifiInfo = "WL_CONNECTION_LOST";
+      break;
+    case WL_CONNECT_FAILED:
+      wifiInfo = "WL_CONNECT_FAILED";
+      break;
+    case WL_SCAN_COMPLETED:
+      wifiInfo = "WL_SCAN_COMPLETED";
+      break;
+    case WL_CONNECTED:
+      wifiInfo = "WL_CONNECTED";
+      break;
+    }
+    wifiInfo = "WiFi has been stuck in " + wifiInfo + " for more than " + String(nextRetry/1000) + " second(s), attempting reconnect...";
+    
+	logger.addLine(wifiInfo);
+    
+    WiFi.reconnect();
+    timeLastChange = timeNow;
+
+    nextRetry = nextRetry * 2;
+    if (nextRetry >= 960000)
+      nextRetry = 60000;
+  }
+}
 
 
 void loop()
 {
-	if (relayOn != state.getIsHeating())
-	{
-		state.setIsHeating(relayOn);
-#ifdef PIN_RELAY2
-		if (state.getAuxHeatEnabled())
-		{
-			digitalWrite(PIN_RELAY2, relayOn ? HIGH : LOW);
-		}
-#endif
-	}
-	
-#if defined(PIN_PWM) && defined (PIN_PWM_MONITOR)
-	float fpwm = (float)pwmHighCycles / (pwmHighCycles + pwmLowCycles); // pwm range is about 25-100
-	if (fpwm < .27f)
-		fpwm = .27f; // so it doesn't jump around .24 to .27 when screen idle
-	
-	//int pwm = int(100 * ((fpwm - .26) * .74) + .5);
-	int pwm = int(100 * fpwm);
-	uint32_t cycles = ESP.getCycleCount();
-	if (pwmLastInterruptCycles - cycles < 10000)
-		cycles = pwmLastInterruptCycles; // probably interrupted when calling ESP.getCycleCount
-	if (pwmInterruptTimedOut ||  pwmMaxPeriod <  cycles - pwmLastInterruptCycles)
-	{
-		logger.addLine(String(cycles) + String(" - ") + String(pwmLastInterruptCycles) + String(" = ") + String(cycles - pwmLastInterruptCycles) );
-		pwmInterruptTimedOut = true;
-		if (HIGH == pwmPinValue)
-			pwm = 100;
-		else
-			pwm = 0;
-	}
+	checkWiFiConnection();
 
-	if ( state.getPWM() != pwm )
-	{
-		logger.addLine(String("PWM ") + String(pwm) + " !+ " + String(state.getPWM()));
-	
-		//analogWrite(PIN_PWM, pwm == 100 ? 1023 : 0);
-		analogWrite(PIN_PWM, int(1023 * (pwm*0.01f)));
-		// pwm night mode (screen off at night)
-		// idle brightness 0-100%
-		// active_brightness
-	}
-	state.setPWM(pwm);
-#endif
-	state.setTimeAvailable(cbtime_set > 1);
+	state.setTimeAvailable(cbtime_set > 0);
 	state.loop();
 
 	webserver.process();
 	ArduinoOTA.handle();
 	MDNS.update();
-	thermostatMQTT.loop();
+	spaMQTT.loop();
+
+	// led blink
+	static uint32_t lastBlink = 0;
+	static uint32_t onTime = 1000;
+	uint32_t timeNow = millis();
+	if (timeNow - lastBlink > onTime)
+	{
+		if (digitalRead(LED_BUILTIN))
+		{
+			onTime = 200;
+			digitalWrite(LED_BUILTIN, LOW);
+		}
+		else
+		{
+			onTime = 800;
+			digitalWrite(LED_BUILTIN, HIGH);
+		}
+		lastBlink = timeNow;
+	}
 }
 
 static void setupOTA()
 {
 	ArduinoOTA.onStart([]() 
 	{
+		logger.addLine("Disabling interrupts");
+		state.disableInterrupts();
 	});
 	ArduinoOTA.onEnd([]()
 	{
@@ -324,70 +295,7 @@ static void setupOTA()
 
 static void initTime()
 {
-
-	// set function to call when time is set
-	// is called by NTP code when NTP is used
 	settimeofday_cb(timeSet);
-
-	// set time from RTC
-	// Normally you would read the RTC to eventually get a current UTC time_t
-	// this is faked for now.
-	time_t rtc_time_t = 1541267183; // fake RTC time for now
-
-	timezone tz = { 0, 0};
-	timeval tv = { rtc_time_t, 0};
-
-	// DO NOT attempt to use the timezone offsets
-	// The timezone offset code is really broken.
-	// if used, then localtime() and gmtime() won't work correctly.
-	// always set the timezone offsets to zero and use a proper TZ string
-	// to get timezone and DST support.
-
-	// set the time of day and explicitly set the timezone offsets to zero
-	// as there appears to be a default offset compiled in that needs to
-	// be set to zero to disable it.
-	settimeofday(&tv, &tz);
-
-
-	// set up TZ string to use a POSIX/gnu TZ string for local timezone
-	// TZ string information:
-	// https://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html
-	setenv("TZ", TIMEZONE, 1);
-
-	tzset(); // save the TZ variable
-
-	// enable NTP by setting up NTP server(s)
-	// up to 3 ntp servers can be specified
-	// configTime(tzoffset, dstflg, "ntp-server1", "ntp-server2", "ntp-server3");
-	// set both timezone offet and dst parameters to zero 
-	// and get real timezone & DST support by using a TZ string
-	configTime(0, 0, "pool.ntp.org");
+	configTime(TIMEZONE, "pool.ntp.org"); // check TZ.h, find your location
 }
 
-#ifdef PIN_RELAY_MONITOR
-
-static void ICACHE_RAM_ATTR handleRelayMonitorInterrupt()
-{
-	relayOn = digitalRead(PIN_RELAY_MONITOR);
-}
-#endif
-#ifdef PIN_PWM_MONITOR
-
-static void ICACHE_RAM_ATTR handlePWMMonitorInterrupt()
-{
-	uint32_t current = ESP.getCycleCount();
-	uint32_t duration = current - pwmLastInterruptCycles;
-	pwmLastInterruptCycles = current;
-
-	pwmPinValue = digitalRead(PIN_PWM_MONITOR);
-	if (HIGH == pwmPinValue)
-	{
-		pwmLowCycles = duration;
-	}
-	else
-	{
-		pwmHighCycles = duration;
-	}
-	pwmInterruptTimedOut = false;
-}
-#endif

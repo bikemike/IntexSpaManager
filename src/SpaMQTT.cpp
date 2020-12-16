@@ -1,4 +1,4 @@
-#include "ThermostatMQTT.h"
+#include "SpaMQTT.h"
 #include "Log.h"
 extern Log logger;
 #include <ESP8266WiFi.h>
@@ -26,11 +26,11 @@ extern Log logger;
 
 
 
-ThermostatMQTT* ThermostatMQTT::self = nullptr;
+SpaMQTT* SpaMQTT::self = nullptr;
 
 
-ThermostatMQTT::ThermostatMQTT(class ThermostatState* state) : 
-	thermostatState(state)
+SpaMQTT::SpaMQTT(class SpaState* state) : 
+	spaState(state)
 {
 	self = this;
 
@@ -38,20 +38,21 @@ ThermostatMQTT::ThermostatMQTT(class ThermostatState* state) :
 	mqttClient.setServer(mqtt_server, 1883); //CHANGE PORT HERE IF NEEDED
 	mqttClient.setCallback(static_callback);
 
-	if (thermostatState)
+	if (spaState)
 	{
-		thermostatState->addListener(this);
+		spaState->addListener(this);
 	}
 }
 
-void ThermostatMQTT::sendHAMode()
+void SpaMQTT::sendHAMode()
 {
 	String value = "off";
 
+/*
 	// off heat auto
-	if (thermostatState->getPower())
+	if (spaState->getPower())
 	{
-		if (thermostatState->getMode() == ThermostatState::MODE_MANUAL)
+		if (spaState->getMode() == SpaState::MODE_MANUAL)
 		{
 			value = "heat";
 		}
@@ -62,16 +63,17 @@ void ThermostatMQTT::sendHAMode()
 	}
 		
 	mqttClient.publish((name+topic_ha_mode).c_str(), value.c_str(), true);
-
+*/
 }
 
-void ThermostatMQTT::sendHAAction()
+void SpaMQTT::sendHAAction()
 {
+	/*
 	// idle heating off
 	String value = "off";
-	if (thermostatState->getPower())
+	if (spaState->getPower())
 	{
-		if (thermostatState->getIsHeating())
+		if (spaState->getIsHeating())
 		{
 			value = "heating";
 		}
@@ -81,12 +83,13 @@ void ThermostatMQTT::sendHAAction()
 		}
 	}
 	mqttClient.publish((name+topic_ha_action).c_str(), value.c_str(), true);
-	
+	*/
 }
 
 
-void ThermostatMQTT::handleThermostatStateChange(const ThermostatState::ChangeEvent& c)
+void SpaMQTT::handleSpaStateChange(const SpaState::ChangeEvent& c)
 {
+	/*
 	if (!mqttClient.connected())
 	{
 		pendingChangeEvents.insert(c);
@@ -96,86 +99,87 @@ void ThermostatMQTT::handleThermostatStateChange(const ThermostatState::ChangeEv
 	bool published = false;
 	switch(c.getType())
 	{
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_POWER:
+	case SpaState::ChangeEvent::CHANGE_TYPE_POWER:
 		{
-			published = mqttClient.publish((name+topic_power).c_str(), thermostatState->getPower() ? "ON" : "OFF", true);
+			published = mqttClient.publish((name+topic_power).c_str(), spaState->getPower() ? "ON" : "OFF", true);
 			sendHAMode();
 			sendHAAction();
 		}
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_MODE:
+	case SpaState::ChangeEvent::CHANGE_TYPE_MODE:
 		{
-			published = mqttClient.publish((name+topic_mode).c_str(), thermostatState->getMode() == ThermostatState::MODE_MANUAL ? "1" : "0", true);
-			if (thermostatState->getMode() == ThermostatState::MODE_MANUAL)
+			published = mqttClient.publish((name+topic_mode).c_str(), spaState->getMode() == SpaState::MODE_MANUAL ? "1" : "0", true);
+			if (spaState->getMode() == SpaState::MODE_MANUAL)
 			{
-				published = mqttClient.publish((name+topic_setpoint_temp).c_str(), String(thermostatState->getSetPointTemp()).c_str(), true);
+				published = mqttClient.publish((name+topic_setpoint_temp).c_str(), String(spaState->getSetPointTemp()).c_str(), true);
 			}
 			else
 			{
-				published = mqttClient.publish((name+topic_setpoint_temp).c_str(), String(thermostatState->getScheduleCurrentPeriodSetPointTemp()).c_str(), true);
+				published = mqttClient.publish((name+topic_setpoint_temp).c_str(), String(spaState->getScheduleCurrentPeriodSetPointTemp()).c_str(), true);
 			}
 			
 			sendHAMode();
 			sendHAAction();
 		}
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_ECONOMY:
+	case SpaState::ChangeEvent::CHANGE_TYPE_ECONOMY:
 		{
-			published = mqttClient.publish((name+topic_economy).c_str(), thermostatState->getEconomy() ? "ON" : "OFF", true);
+			published = mqttClient.publish((name+topic_economy).c_str(), spaState->getEconomy() ? "ON" : "OFF", true);
 		}
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_SETPOINT_TEMP:
+	case SpaState::ChangeEvent::CHANGE_TYPE_SETPOINT_TEMP:
 		{
-			if (thermostatState->getMode() == ThermostatState::MODE_MANUAL)
+			if (spaState->getMode() == SpaState::MODE_MANUAL)
 			{
-				published = mqttClient.publish((name+topic_setpoint_temp).c_str(), String(thermostatState->getSetPointTemp()).c_str(), true);
+				published = mqttClient.publish((name+topic_setpoint_temp).c_str(), String(spaState->getSetPointTemp()).c_str(), true);
 			}
 		}
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_INTERNAL_TEMP:
+	case SpaState::ChangeEvent::CHANGE_TYPE_INTERNAL_TEMP:
 		{
-			published = mqttClient.publish((name+topic_internal_temp).c_str(), String(thermostatState->getInternalTemp()).c_str());
+			published = mqttClient.publish((name+topic_internal_temp).c_str(), String(spaState->getInternalTemp()).c_str());
 		}
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_EXTERNAL_TEMP:
+	case SpaState::ChangeEvent::CHANGE_TYPE_EXTERNAL_TEMP:
 		{
-			published = mqttClient.publish((name+topic_external_temp).c_str(), String(thermostatState->getExternalTemp()).c_str());
+			published = mqttClient.publish((name+topic_external_temp).c_str(), String(spaState->getExternalTemp()).c_str());
 		}
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_IS_HEATING:
+	case SpaState::ChangeEvent::CHANGE_TYPE_IS_HEATING:
 		{
-			published = mqttClient.publish((name+topic_is_heating).c_str(), thermostatState->getIsHeating() ? "ON" : "OFF", true);
+			published = mqttClient.publish((name+topic_is_heating).c_str(), spaState->getIsHeating() ? "ON" : "OFF", true);
 			sendHAAction();
 		}
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_SCHEDULE:
-		//published = mqttClient.publish((name+topic_schedule).c_str(), thermostatState->getPower() ? "ON" : "OFF");
+	case SpaState::ChangeEvent::CHANGE_TYPE_SCHEDULE:
+		//published = mqttClient.publish((name+topic_schedule).c_str(), spaState->getPower() ? "ON" : "OFF");
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_LOCK:
+	case SpaState::ChangeEvent::CHANGE_TYPE_LOCK:
 		{
-			published = mqttClient.publish((name+topic_lock).c_str(), thermostatState->getLock() ? "ON" : "OFF", true);
+			published = mqttClient.publish((name+topic_lock).c_str(), spaState->getLock() ? "ON" : "OFF", true);
 		}
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_AUX_HEAT_ENABLED:
+	case SpaState::ChangeEvent::CHANGE_TYPE_AUX_HEAT_ENABLED:
 		{
-			published = mqttClient.publish((name+topic_aux_heat).c_str(), thermostatState->getAuxHeatEnabled() ? "ON" : "OFF");
+			published = mqttClient.publish((name+topic_aux_heat).c_str(), spaState->getAuxHeatEnabled() ? "ON" : "OFF");
 		}
 		break;
-	case ThermostatState::ChangeEvent::CHANGE_TYPE_CURRENT_SCHEDULE_PERIOD:
+	case SpaState::ChangeEvent::CHANGE_TYPE_CURRENT_SCHEDULE_PERIOD:
 		{
-			if (thermostatState->getMode() == ThermostatState::MODE_SCHEDULE)
+			if (spaState->getMode() == SpaState::MODE_SCHEDULE)
 			{
-				published = mqttClient.publish((name+topic_setpoint_temp).c_str(), String(thermostatState->getScheduleCurrentPeriodSetPointTemp()).c_str(), true);
+				published = mqttClient.publish((name+topic_setpoint_temp).c_str(), String(spaState->getScheduleCurrentPeriodSetPointTemp()).c_str(), true);
 			}
 		}
 		break;
 	default:
 		break;
 	}
+	*/
 }
 
 
-void ThermostatMQTT::loop()
+void SpaMQTT::loop()
 {
 	static uint32_t lastServiceTime = 0;
 	static uint32_t lastServiceTimeMQTT = 0;
@@ -186,9 +190,9 @@ void ThermostatMQTT::loop()
 		lastServiceTime = now;
 		if (mqttClient.connected() && !pendingChangeEvents.empty())
 		{
-			ThermostatState::ChangeEvent c = *pendingChangeEvents.begin();
+			SpaState::ChangeEvent c = *pendingChangeEvents.begin();
 			pendingChangeEvents.erase(pendingChangeEvents.begin());
-			handleThermostatStateChange(c);
+			handleSpaStateChange(c);
 		}
 	}
 
@@ -210,7 +214,7 @@ void ThermostatMQTT::loop()
 
 }
 
-void ThermostatMQTT::reconnect()
+void SpaMQTT::reconnect()
 {
 	static uint32_t lastConnectAttempt = 0;
 
@@ -247,13 +251,13 @@ void ThermostatMQTT::reconnect()
 }
 
 
-void ThermostatMQTT::static_callback(char* topic, byte* payload, unsigned int length)
+void SpaMQTT::static_callback(char* topic, byte* payload, unsigned int length)
 {
 	if (self)
 		self->callback(topic,payload,length);
 }
 
-void ThermostatMQTT::subscribe()
+void SpaMQTT::subscribe()
 {
 	mqttClient.subscribe((name + topic_power"/set").c_str());
 	mqttClient.subscribe((name + topic_aux_heat"/set").c_str());
@@ -265,8 +269,9 @@ void ThermostatMQTT::subscribe()
 	mqttClient.subscribe((name + topic_ha_mode"/set").c_str());
 }
 
-void ThermostatMQTT::callback(char* topic_, byte* payload, unsigned int length)
+void SpaMQTT::callback(char* topic_, byte* payload, unsigned int length)
 {
+	/*
 	char msg_buff[64];
 	
 	if (length >= 63)
@@ -284,52 +289,52 @@ void ThermostatMQTT::callback(char* topic_, byte* payload, unsigned int length)
 	if (topic.endsWith(topic_power"/set"))
 	{
 		if (msg.equalsIgnoreCase("on"))
-			thermostatState->setPower(1, true);
+			spaState->setPower(1, true);
 		else if (msg.equalsIgnoreCase("off"))
-			thermostatState->setPower(0, true);
+			spaState->setPower(0, true);
 	}
 	else if (topic.endsWith(topic_ha_mode"/set"))
 	{
 		if (msg.equalsIgnoreCase("off"))
-			thermostatState->setPower(false, true);
+			spaState->setPower(false, true);
 		else if (msg.equalsIgnoreCase("heat"))
 		{
-			thermostatState->setPower(true, true);
-			thermostatState->setMode(ThermostatState::MODE_MANUAL, true);
+			spaState->setPower(true, true);
+			spaState->setMode(SpaState::MODE_MANUAL, true);
 		}
 		else if (msg.equalsIgnoreCase("auto"))
 		{
-			thermostatState->setPower(true, true);
-			thermostatState->setMode(ThermostatState::MODE_SCHEDULE, true);
+			spaState->setPower(true, true);
+			spaState->setMode(SpaState::MODE_SCHEDULE, true);
 		}
 	}
 	else if (topic.endsWith(topic_mode"/set"))
 	{
 		if (msg.equalsIgnoreCase("1"))
-			thermostatState->setMode(ThermostatState::MODE_MANUAL, true);
+			spaState->setMode(SpaState::MODE_MANUAL, true);
 		else if (msg.equalsIgnoreCase("0"))
-			thermostatState->setMode(ThermostatState::MODE_SCHEDULE, true);
+			spaState->setMode(SpaState::MODE_SCHEDULE, true);
 	}
 	else if (topic.endsWith(topic_economy"/set"))
 	{
 		if (msg.equalsIgnoreCase("on"))
-			thermostatState->setEconomy(1, true);
+			spaState->setEconomy(1, true);
 		else if (msg.equalsIgnoreCase("off"))
-			thermostatState->setEconomy(0, true);
+			spaState->setEconomy(0, true);
 	}
 	else if (topic.endsWith(topic_setpoint_temp"/set"))
 	{
-		if (thermostatState->getMode() == ThermostatState::MODE_MANUAL)
+		if (spaState->getMode() == SpaState::MODE_MANUAL)
 		{
-			thermostatState->setSetPointTemp(msg.toFloat(), true);
+			spaState->setSetPointTemp(msg.toFloat(), true);
 		}
 	}
 	else if (topic.endsWith(topic_aux_heat"/set"))
 	{
 		if (msg.equalsIgnoreCase("on"))
-			thermostatState->setAuxHeatEnabled(true);
+			spaState->setAuxHeatEnabled(true);
 		else if (msg.equalsIgnoreCase("off"))
-			thermostatState->setAuxHeatEnabled(false);
+			spaState->setAuxHeatEnabled(false);
 	}
 	else if (topic.endsWith(topic_schedule"/set"))
 	{
@@ -337,10 +342,11 @@ void ThermostatMQTT::callback(char* topic_, byte* payload, unsigned int length)
 	else if (topic.endsWith(topic_lock"/set"))
 	{
 		if (msg.equalsIgnoreCase("on"))
-			thermostatState->setLock(1, true);
+			spaState->setLock(1, true);
 		else if (msg.equalsIgnoreCase("off"))
-			thermostatState->setLock(0, true);
+			spaState->setLock(0, true);
 	}
+	*/
 }
 
 
