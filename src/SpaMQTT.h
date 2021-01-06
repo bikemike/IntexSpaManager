@@ -23,8 +23,6 @@ public:
 
 private:
 	void subscribe();
-	void sendHAMode();
-	void sendHAAction();
 private:
 	String name = String("default/");
 	SpaState* spaState;

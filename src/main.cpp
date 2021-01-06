@@ -25,6 +25,12 @@
 #include "Log.h"
 #include "SpaMQTT.h"
 
+#include "OTAPublicKey.h"
+
+BearSSL::PublicKey *signPubKey = nullptr;
+BearSSL::HashSHA256 *hash;
+BearSSL::SigningVerifier *sign;
+
 WiFiManager wifiManager;
 
 SpaState state;
@@ -44,6 +50,7 @@ const int PIN_DAT_OUT = D0; //emulate button press
 
 static void setupOTA();
 static void initTime();
+
 
 
 struct Config
@@ -112,10 +119,12 @@ static void loadConfig()
 
 void setup()
 {
+#ifdef SERIAL_DEBUG
+	Serial.begin(115200);
+#endif
+
 	LittleFS.begin();
 	loadConfig();
-	//strlcpy(config.deviceName, "MoesThermostat",16);
-	//saveConfig();
 
 	spaMQTT.setName(config.deviceName);
 	ArduinoOTA.setHostname(config.deviceName);
@@ -125,9 +134,7 @@ void setup()
 	WiFi.begin();
 	wifiManager.setConfigPortalTimeout(120);
 	wifiManager.setDebugOutput(false);
-#ifdef SERIAL_DEBUG
-	Serial.begin(115200);
-#endif
+
 	state.setWifiConfigCallback([]() {
 		logger.addLine("Configuration portal opened");
 		webserver.stop();
@@ -229,17 +236,33 @@ void checkWiFiConnection()
   }
 }
 
-
+ 
 void loop()
 {
 	checkWiFiConnection();
 
+	yield();
+
 	state.setTimeAvailable(cbtime_set > 0);
+
+	yield();
+
 	state.loop();
 
+	yield();
+
 	webserver.process();
+
+	yield();
+
 	ArduinoOTA.handle();
+
+	yield();
+
 	MDNS.update();
+
+	yield();
+
 	spaMQTT.loop();
 
 	// led blink
@@ -260,10 +283,17 @@ void loop()
 		}
 		lastBlink = timeNow;
 	}
+
+	yield();
 }
 
 static void setupOTA()
 {
+	signPubKey = new BearSSL::PublicKey(signing_pubkey);
+	hash = new BearSSL::HashSHA256();
+	sign = new BearSSL::SigningVerifier(signPubKey);
+	Update.installSignature( hash, sign );
+
 	ArduinoOTA.onStart([]() 
 	{
 		logger.addLine("Disabling interrupts");

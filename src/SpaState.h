@@ -52,11 +52,12 @@ public:
 
 	bool getIsTempInC() const;
 	bool getIsTempInF() const;
-	String getTemperatureUnitString() const { return( celsius ? "C" : "F" );}
+	String getTemperatureUnitString() const { return( isCelsius ? "C" : "F" );}
 
 	void setTempInC(bool c);
 
 	int getCurrentTemperature() const;
+	float getExternalTemperature() const;
 
 	int getTargetTemperature() const;
 	void setTargetTemperature(int newValue);
@@ -96,10 +97,14 @@ public:
 
 		str +=
 		    String("TargetTemp: ") + String(getTargetTemperature()) + getTemperatureUnitString() + "\n" +
-		    String("Temp: ") + String(getCurrentTemperature()) + getTemperatureUnitString() +
+		    String("Temp: ") + String(getCurrentTemperature()) + getTemperatureUnitString() + "\n" +
+		    String("Air Temp: ") + String(getExternalTemperature()) + getTemperatureUnitString() +
 			String("\n\n");
 		return str;
 	}
+
+	bool testRunning = false;
+	void startStopTest(String testType);
 
 	class ChangeEvent
 	{
@@ -108,11 +113,14 @@ public:
 		{
 			CHANGE_TYPE_NONE,
 			CHANGE_TYPE_POWER,
+			CHANGE_TYPE_HEATING_ENABLED,
 			CHANGE_TYPE_HEATING,
-			CHANGE_TYPE_FILTERING,
+			CHANGE_TYPE_FILTER,
 			CHANGE_TYPE_BUBBLES,
-			CHANGE_TYPE_SETPOINT_TEMP,
+			CHANGE_TYPE_TARGET_TEMP,
 			CHANGE_TYPE_TEMP,
+			CHANGE_TYPE_AIR_TEMP,
+			CHANGE_TYPE_TEMP_UNITS,
 		};
 	public:
 		ChangeEvent(ChangeType t) : type (t) {}
@@ -179,24 +187,37 @@ protected:
 	}
 
 
-enum ButtonT {
-  BTN_POWER  = 0,
-  BTN_UP     = 1,
-  BTN_DOWN   = 2,
-  BTN_FILTER = 3,
-  BTN_HEATER = 4,
-  BTN_BUBBLE = 5,
-  BTN_FC     = 6
-  
-};
+	enum ButtonT {
+	BTN_POWER  = 0,
+	BTN_UP     = 1,
+	BTN_DOWN   = 2,
+	BTN_FILTER = 3,
+	BTN_HEATER = 4,
+	BTN_BUBBLE = 5,
+	BTN_FC     = 6
+	
+	};
 
 
 	void readSegment(uint16_t msg, int seg);
 	void readLEDStates(uint16_t msg);
 	void classifyTemperature();
 	void writeButton(ButtonT button);
-	void handleButton(ButtonT button);
 	inline ICACHE_RAM_ATTR bool simulateButtonPress();
+
+	void setTemperatureUnitsInternal(bool isC);
+	uint32_t lastTemperatureUnitChangeMS = 0;
+	uint32_t numQuickTempUnitChanges = 0;
+
+	void setPowerEnabledInternal(bool newValue);
+	void setIsHeatingInternal(bool newValue);
+	void setHeatingEnabledInternal(bool newValue);
+	void setFilterEnabledInternal(bool newValue);
+	void setBubblesEnabledInternal(bool newValue);
+	void setTargetTemperatureInternal(int newValue);
+	void setAirTemperatureInternal(float newValue);
+
+
 
 private:
 	std::set<Listener*> listeners;
@@ -214,7 +235,8 @@ private:
 	bool curTempTmpValid = false; //current temperature candidate is valid / has not timed out
 	int  curTemp = 15;            //current temperature
 	int  setTemp = 25;            //target temperature
-	bool celsius = true;
+	float externalTemperature = 0.f;
+	bool isCelsius = true;
 
 	volatile uint16_t buttonCodes[7] = {
 		0xFBFF, // BTN_POWER
@@ -255,45 +277,107 @@ private:
 
 	void processMessages();
 
-	const int btnCycles  = 5;
+	int btnCycles  = 6;
+
 	volatile bool btnPulse = false;
-
-	// Prototypen
 	volatile uint8_t clkCount = 0;
-
-	//16-Bit Shift Register, 
 	volatile uint16_t clkBuf = 0;
 
-	enum Led {
+	enum LEDBits {
 	LED_POWER        =0,
-	LED_BUBBLE       =1,
-	LED_HEATER_GREEN =2,
-	LED_HEATER_RED   =3,
-	LED_FILTER       =4  
+	LED_BUBBLE       =10,
+	LED_HEATER_GREEN =9,
+	LED_HEATER_RED   =7,
+	LED_FILTER       =12  
 	};
-	volatile uint8_t ledStates = 0;
+	
+	bool isPowerEnabled    = false;
+	bool isFilterEnabled   = false;
+	bool isHeating         = false;
+	bool isHeatingEnabled  = false;
+	bool areBubblesEnabled = false;
+	
 
 	const int reqCycles = 90;
-	volatile int dispCycles = reqCycles; //non blank display cycles
+	int dispCycles = reqCycles; //non blank display cycles
 
+	enum OperationType {
+		OPERATION_NONE            = 0,
+		OPERATION_SET_POWER       = 1,
+		OPERATION_SET_HEATING     = 2,
+		OPERATION_SET_FILTER      = 3,
+		OPERATION_SET_BUBBLES     = 4,
+		OPERATION_SET_TEMPERATURE = 5,
+		OPERATION_SET_UNITS       = 6,
+	};
 
-enum OperationType {
-  OPERATION_NONE            = 0,
-  OPERATION_SET_POWER       = 1,
-  OPERATION_SET_HEATING     = 2,
-  OPERATION_SET_FILTER      = 3,
-  OPERATION_SET_BUBBLES     = 4,
-  OPERATION_SET_TEMPERATURE = 5,
-  OPERATION_SET_UNITS       = 6,
-  
-};
-	bool startBoolOperation(OperationType type, bool value);
-	bool startIntOperation(OperationType type, int value);
-	OperationType operationType = OPERATION_NONE;
-	uint32_t operationStartTime = 0;
-	int operationIntValue = 0;
-	bool operationBoolValue = false;
-	int operationTries = 0;
+	class Command
+	{
+			// test results:
+			// power: 200 timeout, 500 delay
+			// C/F:  500 timeout 300 delay
+			// set temp: 550 timeout, 0 delay
+	public:
+		enum CommandType {
+			COMMAND_NONE            = 0,
+			COMMAND_SET_POWER       = 1,
+			COMMAND_SET_HEATING     = 2,
+			COMMAND_SET_FILTER      = 3,
+			COMMAND_SET_BUBBLES     = 4,
+			COMMAND_SET_TEMPERATURE = 5,
+			COMMAND_SET_UNITS       = 6,
+		};
+		Command(CommandType type, bool value) :
+			commandType(type), commandBoolValue(value)
+		{
+			if (COMMAND_SET_POWER == commandType)
+			{
+				commandTimeout = 200;
+				commandDelay = 500;
+			}
+			else if (COMMAND_SET_UNITS == commandType)
+			{
+				commandTimeout = 500;
+				commandDelay = 300;
+			}
+			commandRetries = 2;
+		}
+		
+		Command(CommandType type, int value) :
+			commandType(type), commandIntValue(value)
+		{
+			if (COMMAND_SET_TEMPERATURE == commandType)
+			{
+				commandTimeout = 550;
+				commandDelay = 0;
+			}
+			commandRetries = 30;
+		}
+
+		void process();
+
+		bool isFinished() { return finished; }
+	private:
+		bool commandTryStarted = false;
+		CommandType commandType = COMMAND_NONE;
+		uint32_t commandStartTime = 0;
+		uint32_t commandCompleteTime = 0;
+		uint32_t commandDelay = 600;
+		uint32_t commandTimeout = 600;
+		bool commandBoolValue = false;
+		int commandIntValue = 0;
+		int commandIntStepValue = 0;
+		int commandTries = 0;
+		int commandRetries = 2;
+		bool finished = false;
+	};
+
+	std::vector<Command> commands;
+
+	bool initialized = false;
+
+	friend class SpaTest;
+	OperationType testType = OPERATION_NONE;
 };
 
 

@@ -4,25 +4,20 @@ extern Log logger;
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-#define mqtt_server "192.168.31.107" // Enter your MQTT server adderss or IP. I use my DuckDNS adddress (yourname.duckdns.org) in this field
+#define mqtt_server "192.168.31.107"
 #define mqtt_user "" //enter your MQTT username
 #define mqtt_password "" //enter your password
 
 #define topic_availability "availability"
 #define topic_power "power"   // on/off
-#define topic_aux_heat "aux_heat"
-#define topic_mode "mode" // 1 = manual, 0 = auto
-#define topic_economy "economy"
-#define topic_setpoint_temp "setpoint_temp"
-#define topic_internal_temp "internal_temp"
-#define topic_external_temp "external_temp"
-#define topic_is_heating "is_heating"
-#define topic_schedule "schedule"
-#define topic_lock "lock"
-
-// topics specific for home assistant mqtt climate platform
-#define topic_ha_action "ha_action"  // idle heating off
-#define topic_ha_mode   "ha_mode"    // auto off heat
+#define topic_heating_enabled "heating_enabled" // true/false
+#define topic_heating "heating" // true/false
+#define topic_filter "filter"  // on/off
+#define topic_bubbles "bubbles" // on/off
+#define topic_target_temp "target_temp"
+#define topic_temp "temp"
+#define topic_air_temp "air_temp"
+#define topic_temp_units "temp_units"
 
 
 
@@ -44,52 +39,9 @@ SpaMQTT::SpaMQTT(class SpaState* state) :
 	}
 }
 
-void SpaMQTT::sendHAMode()
-{
-	String value = "off";
-
-/*
-	// off heat auto
-	if (spaState->getPower())
-	{
-		if (spaState->getMode() == SpaState::MODE_MANUAL)
-		{
-			value = "heat";
-		}
-		else
-		{
-			value = "auto";
-		}
-	}
-		
-	mqttClient.publish((name+topic_ha_mode).c_str(), value.c_str(), true);
-*/
-}
-
-void SpaMQTT::sendHAAction()
-{
-	/*
-	// idle heating off
-	String value = "off";
-	if (spaState->getPower())
-	{
-		if (spaState->getIsHeating())
-		{
-			value = "heating";
-		}
-		else
-		{
-			value = "idle";
-		}
-	}
-	mqttClient.publish((name+topic_ha_action).c_str(), value.c_str(), true);
-	*/
-}
-
 
 void SpaMQTT::handleSpaStateChange(const SpaState::ChangeEvent& c)
 {
-	/*
 	if (!mqttClient.connected())
 	{
 		pendingChangeEvents.insert(c);
@@ -101,81 +53,48 @@ void SpaMQTT::handleSpaStateChange(const SpaState::ChangeEvent& c)
 	{
 	case SpaState::ChangeEvent::CHANGE_TYPE_POWER:
 		{
-			published = mqttClient.publish((name+topic_power).c_str(), spaState->getPower() ? "ON" : "OFF", true);
-			sendHAMode();
-			sendHAAction();
+			published = mqttClient.publish((name+topic_power).c_str(), spaState->getPowerEnabled() ? "ON" : "OFF", true);
 		}
 		break;
-	case SpaState::ChangeEvent::CHANGE_TYPE_MODE:
+	case SpaState::ChangeEvent::CHANGE_TYPE_HEATING_ENABLED:
 		{
-			published = mqttClient.publish((name+topic_mode).c_str(), spaState->getMode() == SpaState::MODE_MANUAL ? "1" : "0", true);
-			if (spaState->getMode() == SpaState::MODE_MANUAL)
-			{
-				published = mqttClient.publish((name+topic_setpoint_temp).c_str(), String(spaState->getSetPointTemp()).c_str(), true);
-			}
-			else
-			{
-				published = mqttClient.publish((name+topic_setpoint_temp).c_str(), String(spaState->getScheduleCurrentPeriodSetPointTemp()).c_str(), true);
-			}
-			
-			sendHAMode();
-			sendHAAction();
+			published = mqttClient.publish((name+topic_heating_enabled).c_str(), spaState->getHeatingEnabled() ? "TRUE" : "FALSE", true);
 		}
 		break;
-	case SpaState::ChangeEvent::CHANGE_TYPE_ECONOMY:
+	case SpaState::ChangeEvent::CHANGE_TYPE_HEATING:
 		{
-			published = mqttClient.publish((name+topic_economy).c_str(), spaState->getEconomy() ? "ON" : "OFF", true);
+			published = mqttClient.publish((name+topic_heating).c_str(), spaState->getIsHeating() ? "ON" : "OFF", true);
 		}
 		break;
-	case SpaState::ChangeEvent::CHANGE_TYPE_SETPOINT_TEMP:
+	case SpaState::ChangeEvent::CHANGE_TYPE_FILTER:
 		{
-			if (spaState->getMode() == SpaState::MODE_MANUAL)
-			{
-				published = mqttClient.publish((name+topic_setpoint_temp).c_str(), String(spaState->getSetPointTemp()).c_str(), true);
-			}
+			published = mqttClient.publish((name+topic_filter).c_str(), String(spaState->getFilterEnabled()) ? "ON" : "OFF", true);
 		}
 		break;
-	case SpaState::ChangeEvent::CHANGE_TYPE_INTERNAL_TEMP:
+	case SpaState::ChangeEvent::CHANGE_TYPE_BUBBLES:
 		{
-			published = mqttClient.publish((name+topic_internal_temp).c_str(), String(spaState->getInternalTemp()).c_str());
+			published = mqttClient.publish((name+topic_bubbles).c_str(), spaState->getBubblesEnabled() ? "ON" : "OFF", true);
 		}
 		break;
-	case SpaState::ChangeEvent::CHANGE_TYPE_EXTERNAL_TEMP:
+
+	case SpaState::ChangeEvent::CHANGE_TYPE_TEMP:
 		{
-			published = mqttClient.publish((name+topic_external_temp).c_str(), String(spaState->getExternalTemp()).c_str());
+			published = mqttClient.publish((name+topic_temp).c_str(), String(spaState->getCurrentTemperature()).c_str(), true);
 		}
 		break;
-	case SpaState::ChangeEvent::CHANGE_TYPE_IS_HEATING:
+	case SpaState::ChangeEvent::CHANGE_TYPE_AIR_TEMP:
 		{
-			published = mqttClient.publish((name+topic_is_heating).c_str(), spaState->getIsHeating() ? "ON" : "OFF", true);
-			sendHAAction();
+			published = mqttClient.publish((name+topic_air_temp).c_str(), String(spaState->getExternalTemperature()).c_str(), true);
 		}
 		break;
-	case SpaState::ChangeEvent::CHANGE_TYPE_SCHEDULE:
-		//published = mqttClient.publish((name+topic_schedule).c_str(), spaState->getPower() ? "ON" : "OFF");
-		break;
-	case SpaState::ChangeEvent::CHANGE_TYPE_LOCK:
+	case SpaState::ChangeEvent::CHANGE_TYPE_TEMP_UNITS:
 		{
-			published = mqttClient.publish((name+topic_lock).c_str(), spaState->getLock() ? "ON" : "OFF", true);
-		}
-		break;
-	case SpaState::ChangeEvent::CHANGE_TYPE_AUX_HEAT_ENABLED:
-		{
-			published = mqttClient.publish((name+topic_aux_heat).c_str(), spaState->getAuxHeatEnabled() ? "ON" : "OFF");
-		}
-		break;
-	case SpaState::ChangeEvent::CHANGE_TYPE_CURRENT_SCHEDULE_PERIOD:
-		{
-			if (spaState->getMode() == SpaState::MODE_SCHEDULE)
-			{
-				published = mqttClient.publish((name+topic_setpoint_temp).c_str(), String(spaState->getScheduleCurrentPeriodSetPointTemp()).c_str(), true);
-			}
+			published = mqttClient.publish((name+topic_temp_units).c_str(), spaState->getIsTempInC() ? "C" : "F", true );
 		}
 		break;
 	default:
 		break;
 	}
-	*/
 }
 
 
@@ -260,18 +179,15 @@ void SpaMQTT::static_callback(char* topic, byte* payload, unsigned int length)
 void SpaMQTT::subscribe()
 {
 	mqttClient.subscribe((name + topic_power"/set").c_str());
-	mqttClient.subscribe((name + topic_aux_heat"/set").c_str());
-	mqttClient.subscribe((name + topic_mode"/set").c_str());
-	mqttClient.subscribe((name + topic_economy"/set").c_str());
-	mqttClient.subscribe((name + topic_setpoint_temp"/set").c_str());
-	mqttClient.subscribe((name + topic_schedule"/set").c_str());
-	mqttClient.subscribe((name + topic_lock"/set").c_str());
-	mqttClient.subscribe((name + topic_ha_mode"/set").c_str());
+	mqttClient.subscribe((name + topic_heating_enabled"/set").c_str());
+	mqttClient.subscribe((name + topic_filter"/set").c_str());
+	mqttClient.subscribe((name + topic_bubbles"/set").c_str());
+	mqttClient.subscribe((name + topic_target_temp"/set").c_str());
+	mqttClient.subscribe((name + topic_temp_units"/set").c_str());
 }
 
 void SpaMQTT::callback(char* topic_, byte* payload, unsigned int length)
 {
-	/*
 	char msg_buff[64];
 	
 	if (length >= 63)
@@ -289,64 +205,36 @@ void SpaMQTT::callback(char* topic_, byte* payload, unsigned int length)
 	if (topic.endsWith(topic_power"/set"))
 	{
 		if (msg.equalsIgnoreCase("on"))
-			spaState->setPower(1, true);
+			spaState->setPowerEnabled(true);
 		else if (msg.equalsIgnoreCase("off"))
-			spaState->setPower(0, true);
+			spaState->setPowerEnabled(false);
 	}
-	else if (topic.endsWith(topic_ha_mode"/set"))
+	else if (topic.endsWith(topic_heating_enabled"/set"))
 	{
-		if (msg.equalsIgnoreCase("off"))
-			spaState->setPower(false, true);
-		else if (msg.equalsIgnoreCase("heat"))
-		{
-			spaState->setPower(true, true);
-			spaState->setMode(SpaState::MODE_MANUAL, true);
-		}
-		else if (msg.equalsIgnoreCase("auto"))
-		{
-			spaState->setPower(true, true);
-			spaState->setMode(SpaState::MODE_SCHEDULE, true);
-		}
+		if (msg.equalsIgnoreCase("true"))
+			spaState->setHeatingEnabled(true);
+		else if (msg.equalsIgnoreCase("false"))
+			spaState->setHeatingEnabled(false);
 	}
-	else if (topic.endsWith(topic_mode"/set"))
-	{
-		if (msg.equalsIgnoreCase("1"))
-			spaState->setMode(SpaState::MODE_MANUAL, true);
-		else if (msg.equalsIgnoreCase("0"))
-			spaState->setMode(SpaState::MODE_SCHEDULE, true);
-	}
-	else if (topic.endsWith(topic_economy"/set"))
+	else if (topic.endsWith(topic_filter"/set"))
 	{
 		if (msg.equalsIgnoreCase("on"))
-			spaState->setEconomy(1, true);
+			spaState->setFilterEnabled(true);
 		else if (msg.equalsIgnoreCase("off"))
-			spaState->setEconomy(0, true);
+			spaState->setFilterEnabled(false);
 	}
-	else if (topic.endsWith(topic_setpoint_temp"/set"))
-	{
-		if (spaState->getMode() == SpaState::MODE_MANUAL)
-		{
-			spaState->setSetPointTemp(msg.toFloat(), true);
-		}
-	}
-	else if (topic.endsWith(topic_aux_heat"/set"))
+	else if (topic.endsWith(topic_bubbles"/set"))
 	{
 		if (msg.equalsIgnoreCase("on"))
-			spaState->setAuxHeatEnabled(true);
+			spaState->setBubblesEnabled(true);
 		else if (msg.equalsIgnoreCase("off"))
-			spaState->setAuxHeatEnabled(false);
+			spaState->setBubblesEnabled(false);
 	}
-	else if (topic.endsWith(topic_schedule"/set"))
+	
+	else if (topic.endsWith(topic_target_temp"/set"))
 	{
+		spaState->setTargetTemperature(msg.toInt());
 	}
-	else if (topic.endsWith(topic_lock"/set"))
-	{
-		if (msg.equalsIgnoreCase("on"))
-			spaState->setLock(1, true);
-		else if (msg.equalsIgnoreCase("off"))
-			spaState->setLock(0, true);
-	}
-	*/
 }
 
 

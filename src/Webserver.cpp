@@ -90,6 +90,15 @@ void Webserver::handleConsole()
 			int temperature = cmd.substring(8).toInt();
 			state->setTargetTemperature(temperature);
 		}
+		else if (cmd == "test")
+		{
+			state->startStopTest("");
+		}
+		else if (cmd.startsWith("test="))
+		{
+			String testType =  cmd.substring(5);
+			state->startStopTest(testType);
+		}
 	}
 	String msg("<html><head><title>Wifi Spa</title>");
 	msg += "<script>";
