@@ -251,7 +251,15 @@ void SpaState::classifyTemperature()
 		for (int i = 0 ; i < 5; ++i)
 			tmpDigit[i] = digit[i];
 		lstTemp = atoi(tmpDigit);
-		if (--dispCycles < 0)
+
+		--dispCycles;
+
+		if (dispCycles > 20 && dispCycles < 80)
+		{
+			targTempTmp = lstTemp;
+			targTempTmpValid = true;
+		}
+		else if (dispCycles <= 0)
 		{
 			// temperature, that is not followed by an empty display for 90 (>82) cycles, is the current temperature
 			if (curTempTmpValid)
@@ -267,21 +275,31 @@ void SpaState::classifyTemperature()
 					}	
 				}
 			}
-			dispCycles = reqCycles;
+			dispCycles = 0;
 			curTempTmp = lstTemp;
 			curTempTmpValid = true;
+			targTempTmpValid = false;
 		}
-
+		blankCount = 0;
 	}
 	else
-	{ // blank display during blinking
-		// temperature before an blank display is the target temperature
-		if (20 <= lstTemp && lstTemp <=40)
+	{ 
+		if (blankCount > 0)
 		{
-			setTargetTemperatureInternal(lstTemp);
+			// blank display during blinking
+			// temperature before an blank display is the target temperature
+			int minTemp = getIsTempInC() ? 20 : 68;
+			int maxTemp = getIsTempInC() ? 40 : 104;
+
+			if (targTempTmpValid && minTemp <= targTempTmp && targTempTmp <= maxTemp)
+			{
+				setTargetTemperatureInternal(targTempTmp);
+			}
+
+			dispCycles = reqCycles;
+			curTempTmpValid = false;
 		}
-		dispCycles = reqCycles;
-		curTempTmpValid = false;
+		++blankCount;
 	}
 }
 
@@ -425,12 +443,20 @@ void SpaState::setTargetTemperature(int newValue)
 
 int SpaState::getTargetTemperature() const
 {
-	return setTemp;
+	return targTemp;
 }
 
 
 void SpaState::setPowerEnabledInternal(bool newValue)
 {
+	// make sure the value is the same two times
+	// in a row before allowing change
+	if (isPowerEnabledTmp != newValue)
+	{
+		isPowerEnabledTmp = newValue;
+		return;
+	}
+
 	if (isPowerEnabled != newValue)
 	{
 		isPowerEnabled = newValue;
@@ -440,6 +466,14 @@ void SpaState::setPowerEnabledInternal(bool newValue)
 
 void SpaState::setIsHeatingInternal(bool newValue)
 {
+	// make sure the value is the same two times
+	// in a row before allowing change
+	if (isHeatingTmp != newValue)
+	{
+		isHeatingTmp = newValue;
+		return;
+	}
+
 	if (isHeating != newValue)
 	{
 		isHeating = newValue;
@@ -449,6 +483,14 @@ void SpaState::setIsHeatingInternal(bool newValue)
 
 void SpaState::setHeatingEnabledInternal(bool newValue)
 {
+	// make sure the value is the same two times
+	// in a row before allowing change
+	if (isHeatingEnabledTmp != newValue)
+	{
+		isHeatingEnabledTmp = newValue;
+		return;
+	}
+
 	if (isHeatingEnabled != newValue)
 	{
 		isHeatingEnabled = newValue;
@@ -459,6 +501,14 @@ void SpaState::setHeatingEnabledInternal(bool newValue)
 
 void SpaState::setFilterEnabledInternal(bool newValue)
 {
+	// make sure the value is the same two times
+	// in a row before allowing change
+	if (isFilterEnabledTmp != newValue)
+	{
+		isFilterEnabledTmp = newValue;
+		return;
+	}
+
 	if (isFilterEnabled != newValue)
 	{
 		isFilterEnabled = newValue;
@@ -469,6 +519,14 @@ void SpaState::setFilterEnabledInternal(bool newValue)
 
 void SpaState::setBubblesEnabledInternal(bool newValue)
 {
+	// make sure the value is the same two times
+	// in a row before allowing change
+	if (areBubblesEnabledTmp != newValue)
+	{
+		areBubblesEnabledTmp = newValue;
+		return;
+	}
+
 	if (areBubblesEnabled != newValue)
 	{
 		areBubblesEnabled = newValue;
@@ -478,9 +536,9 @@ void SpaState::setBubblesEnabledInternal(bool newValue)
 
 void SpaState::setTargetTemperatureInternal(int newValue)
 {
-	if (setTemp != newValue)
+	if (targTemp != newValue)
 	{
-		setTemp = newValue;
+		targTemp = newValue;
 		emitChange(ChangeEvent::CHANGE_TYPE_TARGET_TEMP);
 		//logger.addLine("setTargetTemperatureInternal: " + String(newValue) );
 	}
@@ -715,8 +773,7 @@ void SpaState::loop()
 	if (!initialized)
 		return;
 
-	static bool targetTempInitialized = false;
-	if (!targetTempInitialized)
+	if (!targetTempInitialized && millis() > 10000)
 	{
 		// this will cause target temp
 		writeButton(BTN_DOWN);
@@ -735,16 +792,15 @@ void SpaState::loop()
 	}
 
 	{
-		static uint32_t timeLastTempCmd = 0;
 		const int tempCheckInterval = 10000;
-		static uint32_t waitTime = tempCheckInterval;
+		static uint32_t airTempWaitTime = tempCheckInterval;
 		uint32_t timeNow = millis();
-		if (timeNow - timeLastTempCmd > waitTime)
+		if (timeNow - timeLastAirTempCmd > airTempWaitTime)
 		{
-			if (waitTime == tempCheckInterval)
+			if (airTempWaitTime == tempCheckInterval)
 			{
 				externalTempSensor.requestTemperatures();
-				waitTime = externalTempSensor.millisToWaitForConversion(12);
+				airTempWaitTime = externalTempSensor.millisToWaitForConversion(12);
 			}
 			else
 			{
@@ -755,9 +811,9 @@ void SpaState::loop()
 					setAirTemperatureInternal(airtemp);
 				}
 				
-				waitTime = tempCheckInterval;
+				airTempWaitTime = tempCheckInterval;
 			}
-			timeLastTempCmd = timeNow;
+			timeLastAirTempCmd = timeNow;
 		}
 	}
 	

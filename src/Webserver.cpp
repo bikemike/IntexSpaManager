@@ -24,23 +24,6 @@ void Webserver::init(SpaState* state_, String devName)
 	server->onNotFound(std::bind(&Webserver::handleRoot, this));
 	server->begin();
 
-/*
-  server->on("/power",  []() {handleButton(BTN_POWER);});
-  server->on("/up",     []() {handleButton(BTN_UP);});
-  server->on("/down",   []() {handleButton(BTN_DOWN);});
-  server->on("/filter", []() {handleButton(BTN_FILTER);});
-  server->on("/heater", []() {handleButton(BTN_HEATER);});
-  server->on("/bubble",[]() {handleButton(BTN_BUBBLE);});
-  server->on("/fc",     []() {handleButton(BTN_FC);}); // celsius fahrenheit
-  server->on("/buzz0",     []() {handleBuzz(0);});
-  server->on("/buzz1",     []() {handleBuzz(1);});
-  server->onNotFound(handleNotFound);
-
-  server->on("/power1",  []() {controller_power_state_set(true);returnToStatus();});
-  server->on("/power0",  []() {controller_power_state_set(false);returnToStatus();});
-  server->on("/set",  []() {handleSet();});
-*/
-
 	httpUpdater->setup(server);
 	state->addListener(this);
 }
@@ -80,6 +63,14 @@ void Webserver::handleConsole()
 		else if(cmd == "power")
 		{
 			state->setPowerEnabled(!state->getPowerEnabled());
+		}
+		else if (cmd == "filter")
+		{
+			state->setFilterEnabled(!state->getFilterEnabled());
+		}
+		else if (cmd == "heating")
+		{
+			state->setHeatingEnabled(!state->getHeatingEnabled());
 		}
 		else if (cmd == "bubbles")
 		{

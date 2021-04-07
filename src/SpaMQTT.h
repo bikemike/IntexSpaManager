@@ -16,6 +16,11 @@ public:
 	void loop();
 	void reconnect();
 
+	void sendHAMode();
+	void sendHAAction();
+	void sendHAFanMode();
+
+
 	static void static_callback(char* topic, byte* payload, unsigned int length);
 	void callback(char* topic, byte* payload, unsigned int length);
 

@@ -121,6 +121,7 @@ public:
 			CHANGE_TYPE_TEMP,
 			CHANGE_TYPE_AIR_TEMP,
 			CHANGE_TYPE_TEMP_UNITS,
+			CHANGE_TYPE_FENCE
 		};
 	public:
 		ChangeEvent(ChangeType t) : type (t) {}
@@ -234,9 +235,15 @@ private:
 	int  curTempTmp = 0;              //current temperature candidate
 	bool curTempTmpValid = false; //current temperature candidate is valid / has not timed out
 	int  curTemp = 15;            //current temperature
-	int  setTemp = 25;            //target temperature
+	int  targTempTmp = 0;              //target temperature candidate
+	bool targTempTmpValid = false; //target temperature candidate is valid
+	int  targTemp = 25;            //target temperature
 	float externalTemperature = 0.f;
 	bool isCelsius = true;
+	bool blankCount = 0;
+	bool targetTempInitialized = false;
+	uint32_t timeLastAirTempCmd = 0;
+	uint32_t airTempWaitTime = 0;
 
 	volatile uint16_t buttonCodes[7] = {
 		0xFBFF, // BTN_POWER
@@ -291,11 +298,16 @@ private:
 	LED_FILTER       =12  
 	};
 	
-	bool isPowerEnabled    = false;
-	bool isFilterEnabled   = false;
-	bool isHeating         = false;
-	bool isHeatingEnabled  = false;
-	bool areBubblesEnabled = false;
+	bool isPowerEnabledTmp    = false;
+	bool isPowerEnabled       = false;
+	bool isFilterEnabledTmp   = false;
+	bool isFilterEnabled      = false;
+	bool isHeatingTmp         = false;
+	bool isHeating            = false;
+	bool isHeatingEnabledTmp  = false;
+	bool isHeatingEnabled     = false;
+	bool areBubblesEnabledTmp = false;
+	bool areBubblesEnabled    = false;
 	
 
 	const int reqCycles = 90;
