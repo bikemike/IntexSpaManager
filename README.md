@@ -48,10 +48,10 @@ I soldered a connector to the main board so I could easily unplug my d1 mini if 
 ### Diagram
 Note that the colors of the wires in the diagram match the color of the wires on the main board pcb. The temperature sensor on the right hand side is an optional addition to get air temperature.
 
-![diagram](docs/diagram.png)
+![diagram](docs/diagram.png_error)
 
 ### Schematic
-![schematic](docs/schematic.png)
+![schematic](docs/schematic.png_error)
 
 ### Connector Soldered
 After the goo is removed, I broke off some of the white plastic tabs of the J5 connector to espose areas to solder wires to.
